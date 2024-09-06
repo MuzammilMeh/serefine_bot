@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+env/
+.env
+
+# FastAPI
+.pytest_cache/
+
+# LlamaIndex
+chroma_db/
+
+# IDE-specific files
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Patient data and summaries (if you want to exclude them from version control)
+patient_data/
+summarize_output/
+
+# Dependency management
+poetry.lock
+
+# Temporary files
+*.tmp
+*.bak
+*.swp

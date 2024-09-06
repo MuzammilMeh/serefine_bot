@@ -1,23 +1,22 @@
 import logging
-import os
 import uvicorn
-from app.api.routers.chat import chat_docs
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
+from app.api.routers.chat import chat_docs
 from app.api.routers.patient_data import patient_data_router
-from app.observability import init_observability  # Add this import
+from app.observability import init_observability
+from app.config import config
+from app.utils.error_handler import http_error_handler
+from fastapi import HTTPException
 
-load_dotenv()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 init_observability()
 
 app = FastAPI()
 
-environment = os.getenv("ENVIRONMENT", "dev")  # Default to 'development' if not set
-
-if environment == "dev":
-    logger = logging.getLogger("uvicorn")
+if config.ENVIRONMENT == "dev":
     logger.warning("Running in development mode - allowing CORS for all origins")
     app.add_middleware(
         CORSMiddleware,
@@ -27,9 +26,9 @@ if environment == "dev":
         allow_headers=["*"],
     )
 
+app.add_exception_handler(HTTPException, http_error_handler)
 app.include_router(chat_docs)
 app.include_router(patient_data_router, prefix="/api")
-
 
 if __name__ == "__main__":
     uvicorn.run(app="main:app", host="0.0.0.0", reload=True)
