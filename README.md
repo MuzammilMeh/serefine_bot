@@ -1,21 +1,51 @@
-This is a [LlamaIndex](https://www.llamaindex.ai/) project using [FastAPI](https://fastapi.tiangolo.com/) bootstrapped with [`create-llama`](https://github.com/run-llama/LlamaIndexTS/tree/main/packages/create-llama).
+# Serefine Chatbot
+
+## Features
+
+- Patient data management and retrieval
+- Chat functionality with patient data
+- Integration with AWS Bedrock for LLM capabilities
+- Streaming responses for chat interactions
+
+## Prerequisites
+
+- Python 3.11 or higher
+- Poetry for dependency management
+- AWS account with Bedrock access (for LLM functionality)
 
 ## Getting Started
 
-First, setup the environment:
+1. Clone the repository:
+   ```
+   git clone https://github.com/MuzammilMeh/serefine_bot.git
+   cd <project-directory>
+   ```
 
-```
-poetry install
-poetry shell
-```
+2. Set up the environment:
+   ```
+   pip install -r requirements.txt
+   
+   ```
 
-Second, run the development server:
+3. Set up environment variables:
+   Create a `.env` file in the root directory and add the following:
+   ```
+   AWS_ACCESS_KEY_ID=your_access_key
+   AWS_SECRET_ACCESS_KEY=your_secret_key
+   AWS_DEFAULT_REGION=your_aws_region
+   PHOENIX_API_KEY=your_phoenix_api_key
+   ```
 
-```
-python main.py
-```
+4. Run the development server:
+   ```
+   python main.py
+   ```
 
-Then call the API endpoint `/api/chat` to see the result:
+## API Endpoints
+
+### Chat Endpoint
+
+To interact with the chat functionality:
 
 ```
 curl --location 'localhost:8000/api/chat' \
@@ -32,11 +62,3 @@ The API allows CORS for all origins to simplify development. You can change this
 ```
 ENVIRONMENT=prod uvicorn main:app
 ```
-
-## Learn More
-
-To learn more about LlamaIndex, take a look at the following resources:
-
-- [LlamaIndex Documentation](https://docs.llamaindex.ai) - learn about LlamaIndex.
-
-You can check out [the LlamaIndex GitHub repository](https://github.com/run-llama/llama_index) - your feedback and contributions are welcome!
