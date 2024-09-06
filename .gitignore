@@ -37,3 +37,34 @@ poetry.lock
 *.tmp
 *.bak
 *.swp
+
+# Bedrock credentials
+.aws/
+
+# Python virtual environment
+.venv/
+
+# PyCharm
+*.iml
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# Environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
