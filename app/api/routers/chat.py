@@ -1,11 +1,20 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.utils.index import get_patient_index, get_global_index, create_meeting_index
 from app.utils.error_handler import http_error_handler
 from llama_index.core.postprocessor import MetadataReplacementPostProcessor
+from llama_index.core.prompts import PromptTemplate
+from llama_index.core.query_engine import RetrieverQueryEngine
+from app.config import config
+from app.api.routers.stream_response import VercelStreamResponse
+import asyncio
+import logging
 
 chat_docs = APIRouter()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class QuestionRequest(BaseModel):
     patient_name: str
@@ -20,57 +29,58 @@ class MeetingQuestionRequest(BaseModel):
     prompt: str
 
 def get_query_engine(index):
-    return index.as_query_engine(
+    retriever = index.as_retriever(similarity_top_k=10)
+    return RetrieverQueryEngine.from_args(
+        retriever,
+        text_qa_template=PromptTemplate(config.SYSTEM_PROMPT),
         streaming=True,
-        similarity_top_k=3,
         node_postprocessors=[
             MetadataReplacementPostProcessor(target_metadata_key="window")
         ],
     )
 
-async def stream_response(response):
-    async def event_generator():
-        try:
-            for token in response.response_gen:
-                yield f"data: {token}\n\n"
-            yield "data: [DONE]\n\n"
-        except Exception as e:
-            yield f"data: Error: {str(e)}\n\n"
-            yield "data: [DONE]\n\n"
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+async def stream_response(request: Request, response):
+    return VercelStreamResponse(
+        request=request,
+        response=response,
+    )
 
 @chat_docs.post("/ask_patient", tags=["Chat with Patient Data"])
-async def chat_with_patient(request: QuestionRequest):
+async def chat_with_patient(request: Request, question: QuestionRequest):
     try:
-        index, _ = get_patient_index(request.patient_name)
+        index, _ = get_patient_index(question.patient_name)
         query_engine = get_query_engine(index)
-        response = query_engine.query(request.prompt)
-        return await stream_response(response)
+        response = await asyncio.to_thread(query_engine.query, question.prompt)
+        return await stream_response(request, response)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @chat_docs.post("/ask_global", tags=["Chat with All Patient Data"])
-async def chat_with_all_patient_data(request: GlobalQuestionRequest):
+async def chat_with_all_patient_data(request: Request, question: GlobalQuestionRequest):
+    logger.info(f"Received global question: {question.prompt}")
     try:
-        index = get_global_index()
+        index = await asyncio.to_thread(get_global_index)
+        logger.info("Global index retrieved successfully")
         query_engine = get_query_engine(index)
-        response = query_engine.query(request.prompt)
-        return await stream_response(response)
+        logger.info("Query engine created")
+        response = await asyncio.to_thread(query_engine.query, question.prompt)
+        logger.info("Query executed successfully")
+        return await stream_response(request, response)
     except Exception as e:
+        logger.error(f"Error in chat_with_all_patient_data: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @chat_docs.post("/ask_meeting", tags=["Chat with Meeting Data"])
-async def chat_with_meeting(request: MeetingQuestionRequest):
+async def chat_with_meeting(request: Request, question: MeetingQuestionRequest):
     try:
-        index = create_meeting_index(request.patient_name, request.meeting_name)
+        index = create_meeting_index(question.patient_name, question.meeting_name)
         query_engine = get_query_engine(index)
-        response = query_engine.query(request.prompt)
-        return await stream_response(response)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Meeting data not found for patient {request.patient_name} and meeting {request.meeting_name}")
+        response = await asyncio.to_thread(query_engine.query, question.prompt)
+        return await stream_response(request, response)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 

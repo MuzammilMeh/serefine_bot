@@ -19,6 +19,7 @@ import boto3
 from botocore.config import Config
 import botocore
 import chromadb
+import asyncio
 
 from app.config import config
 
@@ -56,9 +57,12 @@ def initialize_llm(bedrock_runtime):
         llm = Bedrock(
             model=config.BEDROCK_MODEL,
             client=bedrock_runtime,
-            context_size=200000
+            context_size=200000,
+            temperature=0,
+            
         )
         logger.info(f"Successfully initialized Bedrock LLM with model: {llm.model}")
+        
         return llm
     except Exception as e:
         logger.error(f"Error initializing Bedrock LLM: {str(e)}")
@@ -97,55 +101,68 @@ def get_patient_index(patient_name: str) -> Tuple[VectorStoreIndex, str]:
     return index, collection_name
 
 def get_global_index() -> VectorStoreIndex:
+    logger.info("Starting get_global_index")
     collection_name = "global_patient_data"
     db = chromadb.PersistentClient(path=config.STORAGE_DIR)
     chroma_collection = db.get_or_create_collection(collection_name)
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
 
-    if len(chroma_collection.get()["documents"]) == 0:
-        all_documents = []
-        for patient in os.listdir(config.PATIENT_DATA_DIR):
-            patient_dir = os.path.join(config.PATIENT_DATA_DIR, patient)
-            if os.path.isdir(patient_dir):
-                patient_documents = SimpleDirectoryReader(input_dir=patient_dir, recursive=True).load_data()
-                patient_summary = summarize_patient_data(patient_documents)
-                all_documents.extend(patient_documents + [patient_summary])
+    try:
+        if len(chroma_collection.get()["documents"]) == 0:
+            logger.info("Creating new global index")
+            all_documents = []
+            for patient in os.listdir(config.PATIENT_DATA_DIR):
+                patient_dir = os.path.join(config.PATIENT_DATA_DIR, patient)
+                if os.path.isdir(patient_dir):
+                    logger.info(f"Processing patient directory: {patient}")
+                    patient_documents = SimpleDirectoryReader(input_dir=patient_dir, recursive=True).load_data()
+                    logger.info(f"Loaded {len(patient_documents)} documents for patient {patient}")
+                    patient_summary = summarize_patient_data_view(patient_documents)
+                    logger.info(f"Created summary for patient {patient}")
+                    all_documents.extend(patient_documents + [patient_summary])
+            
+            logger.info(f"Total documents loaded: {len(all_documents)}")
+            logger.info("Creating nodes from documents")
+            nodes = SentenceWindowNodeParser.from_defaults(
+                window_size=10,
+                window_metadata_key="window",
+                original_text_metadata_key="original_text",
+            ).get_nodes_from_documents(all_documents)
+            logger.info(f"Created {len(nodes)} nodes")
 
-        nodes = SentenceWindowNodeParser.from_defaults(
-            window_size=10,
-            window_metadata_key="window",
-            original_text_metadata_key="original_text",
-        ).get_nodes_from_documents(all_documents)
+            logger.info("Creating VectorStoreIndex")
+            index = VectorStoreIndex(
+                nodes,
+                storage_context=StorageContext.from_defaults(vector_store=vector_store)
+            )
+            logger.info("New global index created successfully")
+        else:
+            logger.info("Loading existing global index")
+            index = VectorStoreIndex.from_vector_store(vector_store)
+            logger.info("Existing global index loaded successfully")
 
-        index = VectorStoreIndex(
-            nodes,
-            storage_context=StorageContext.from_defaults(vector_store=vector_store)
-        )
-    else:
-        index = VectorStoreIndex.from_vector_store(vector_store)
-
-    return index
+        return index
+    except Exception as e:
+        logger.error(f"Error in get_global_index: {str(e)}")
+        raise
 
 def create_meeting_index(patient_name: str, meeting_name: str) -> VectorStoreIndex:
-    file_path = os.path.join(config.PATIENT_DATA_DIR, patient_name, f"{meeting_name}.json")
-    collection_name = f"{patient_name}_{meeting_name}"
-
+    file_path = os.path.join(config.PATIENT_DATA_DIR, patient_name, f"{meeting_name}.txt")
+    
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Meeting file not found: {file_path}")
+    
+    # Sanitize the collection name
+    sanitized_meeting_name = meeting_name.replace(" ", "_").lower()
+    collection_name = f"{patient_name.lower()}_{sanitized_meeting_name}"[:63]  # Limit to 63 characters
+    
     db = chromadb.PersistentClient(path=config.STORAGE_DIR)
     chroma_collection = db.get_or_create_collection(collection_name)
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
 
     if len(chroma_collection.get()["documents"]) == 0:
-        with open(file_path, 'r') as f:
-            data = json.load(f)
-        
-        document = Document(text=json.dumps(data))
-        
-        nodes = SentenceWindowNodeParser.from_defaults(
-            window_size=10,
-            window_metadata_key="window",
-            original_text_metadata_key="original_text",
-        ).get_nodes_from_documents([document])
-        
+        documents = SimpleDirectoryReader(input_files=[file_path]).load_data()
+        nodes = SimpleNodeParser.from_defaults().get_nodes_from_documents(documents)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex(nodes=nodes, storage_context=storage_context)
     else:
@@ -154,6 +171,48 @@ def create_meeting_index(patient_name: str, meeting_name: str) -> VectorStoreInd
     return index
 
 def summarize_patient_data(documents: List[Document]) -> Document:
+    summary_template = """You are an AI Psychologist with a specialty of diagnosing Autism in children.
+    The following is a transcription of a conversation between our Staff and one or more parent/guardian of a child with Autism, and may even include a translator - You will need to determine the speakers.
+    Your job is to review the transcription and provide an extremely detailed summary of the conversation that includes as much a detail as possible.
+
+
+    {text}
+
+    Summary:"""
+    
+    chunk_size = 4000  # Adjust this value based on the model's input limit
+    summaries = []
+    
+    for i in range(0, len(documents), 3):  # Process 3 documents at a time
+        chunk_docs = documents[i:i+3]
+        text_content = "\n".join([doc.text for doc in chunk_docs])
+        
+        if len(text_content) > chunk_size:
+            # Split the text content into smaller chunks
+            chunks = [text_content[j:j+chunk_size] for j in range(0, len(text_content), chunk_size)]
+            chunk_summaries = []
+            
+            for chunk in chunks:
+                chunk_summary = Settings.llm.complete(summary_template.format(text=chunk))
+                chunk_summaries.append(chunk_summary.text)
+            
+            summaries.append("\n".join(chunk_summaries))
+        else:
+            summary = Settings.llm.complete(summary_template.format(text=text_content))
+            summaries.append(summary.text)
+    
+    # Combine all summaries
+    final_summary = "\n\n".join(summaries)
+    
+    # If the final summary is still too long, summarize it again
+    if len(final_summary) > chunk_size:
+        final_summary = Settings.llm.complete(summary_template.format(text=final_summary)).text
+    
+    return Document(text=final_summary, extra_info={"type": "patient_summary"})
+
+
+
+def summarize_patient_data_view(documents: List[Document]) -> Document:
     summary_template = """You are an AI Psychologist with a specialty of diagnosing Autism in children.
 The following is a transcription of a conversation between our Staff and one or more parent/guardian of a child with Autism, and may even include a translator - You will need to determine the speakers.
 Your job is to review the transcription and provide an extremely detailed summary of the conversation that includes as much a detail as possible.
