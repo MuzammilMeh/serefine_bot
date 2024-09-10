@@ -2,7 +2,7 @@ import logging
 import os
 import json
 from typing import List, Tuple
-
+from llama_index.llms.openai import OpenAI
 from llama_index.core import (
     SimpleDirectoryReader,
     Document,
@@ -76,7 +76,11 @@ def initialize_llm(bedrock_runtime):
 def initialize_settings():
     embed_model = HuggingFaceEmbedding(model_name=config.EMBEDDING_MODEL)
     Settings.embed_model = embed_model
-    Settings.llm = initialize_llm(initialize_bedrock_client())
+    # Settings.llm = initialize_llm(initialize_bedrock_client())
+
+    os.environ["OPENAI_API_KEY"] = "sk-proj-H1GNnjxf1oq2JzHc1r6gT3BlbkFJX6yPVR204SYTFRJCkjNT"
+    llm = OpenAI(model="gpt-4-1106-preview", temperature=0)
+    Settings.llm = llm
 
 initialize_settings()
 
@@ -123,18 +127,22 @@ def get_global_index() -> VectorStoreIndex:
             
             logger.info(f"Total documents loaded: {len(all_documents)}")
             logger.info("Creating nodes from documents")
-            nodes = SentenceWindowNodeParser.from_defaults(
-                window_size=10,
-                window_metadata_key="window",
-                original_text_metadata_key="original_text",
-            ).get_nodes_from_documents(all_documents)
-            logger.info(f"Created {len(nodes)} nodes")
+            nodes = SimpleNodeParser.from_defaults().get_nodes_from_documents(all_documents)
+            storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-            logger.info("Creating VectorStoreIndex")
-            index = VectorStoreIndex(
-                nodes,
-                storage_context=StorageContext.from_defaults(vector_store=vector_store)
-            )
+            index = VectorStoreIndex(nodes=nodes, storage_context=storage_context)
+            # nodes = SentenceWindowNodeParser.from_defaults(
+            #     window_size=10,
+            #     window_metadata_key="window",
+            #     original_text_metadata_key="original_text",
+            # ).get_nodes_from_documents(all_documents)
+            # logger.info(f"Created {len(nodes)} nodes")
+
+            # logger.info("Creating VectorStoreIndex")
+            # index = VectorStoreIndex(
+            #     nodes,
+            #     storage_context=StorageContext.from_defaults(vector_store=vector_store)
+            # )
             logger.info("New global index created successfully")
         else:
             logger.info("Loading existing global index")
