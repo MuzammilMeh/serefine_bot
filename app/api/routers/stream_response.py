@@ -1,7 +1,7 @@
-import json
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 from llama_index.core.chat_engine.types import StreamingAgentChatResponse
+
 
 class VercelStreamResponse(StreamingResponse):
     @classmethod
@@ -23,17 +23,20 @@ class VercelStreamResponse(StreamingResponse):
         response: StreamingAgentChatResponse,
     ):
         try:
-            if hasattr(response, 'async_response_gen'):
+            if hasattr(response, "async_response_gen"):
                 async for token in response.async_response_gen():
                     yield cls.convert_text(token)
-            elif hasattr(response, 'body_iterator'):
+            elif hasattr(response, "body_iterator"):
                 async for chunk in response.body_iterator:
                     yield cls.convert_text(chunk.decode())
             else:
                 yield cls.convert_text(str(response))
-        except Exception as e:
+        except (
+            AttributeError,
+            TypeError,
+            ValueError,
+        ) as e:  # Catch more specific exceptions
             print(f"Error in content_generator: {e}")
         finally:
             if await request.is_disconnected():
                 print("Client disconnected")
-                return

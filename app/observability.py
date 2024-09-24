@@ -1,5 +1,6 @@
-import llama_index.core
 import os
+
+import llama_index.core
 
 
 def init_observability():

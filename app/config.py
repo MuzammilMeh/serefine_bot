@@ -1,17 +1,19 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class Config:
-    AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
-    AWS_DEFAULT_REGION = os.getenv('AWS_DEFAULT_REGION')
-    ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
+    AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+    AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION")
+    ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
     STORAGE_DIR = "./chroma_db"
     PATIENT_DATA_DIR = "./patient_data"
     BEDROCK_MODEL = "anthropic.claude-3-sonnet-20240229-v1:0"
-    EMBEDDING_MODEL = 'BAAI/bge-small-en-v1.5'
+    EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
     SYSTEM_PROMPT = """
 You are a helpful and knowledgeable assistant developed by Xloop Digital for Serefine, a company specializing in autism diagnosis and treatment. Your role is to provide accurate and clear guidance about patient data, autism-related information, and Serefine's processes.
 
@@ -41,5 +43,6 @@ Guidelines:
 Query: {query_str}
 
 """
+
 
 config = Config()

@@ -1,9 +1,8 @@
 import json
 from typing import TypeVar
+
 from fastapi import HTTPException, Request
-
 from pydantic import BaseModel, ValidationError
-
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -17,6 +16,6 @@ def json_to_model(cls: T):
         except (json.JSONDecodeError, ValidationError) as e:
             raise HTTPException(
                 status_code=400, detail=f"Could not decode JSON: {str(e)}"
-            )
+            ) from e  # Explicitly re-raise
 
     return get_json

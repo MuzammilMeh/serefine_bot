@@ -1,18 +1,21 @@
 import logging
+
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.routers.chat import chat_docs
 from app.api.routers.patient_data import patient_data_router
-from app.observability import init_observability
+from app.arize_client import setup_arize_client
 from app.config import config
+from app.observability import init_observability
 from app.utils.error_handler import http_error_handler
-from fastapi import HTTPException
+
+# init_observability()
+setup_arize_client()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# init_observability()
 
 app = FastAPI()
 
@@ -35,5 +38,4 @@ if __name__ == "__main__":
         port=8000,
         reload=True,
         # workers=4,
-        
     )

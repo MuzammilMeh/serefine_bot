@@ -1,32 +1,36 @@
+import asyncio
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from app.utils.index import get_patient_index, get_global_index, create_meeting_index
-from app.utils.error_handler import http_error_handler
 from llama_index.core.postprocessor import MetadataReplacementPostProcessor
 from llama_index.core.prompts import PromptTemplate
 from llama_index.core.query_engine import RetrieverQueryEngine
-from app.config import config
+from pydantic import BaseModel
+
 from app.api.routers.stream_response import VercelStreamResponse
-import asyncio
-import logging
+from app.config import config
+from app.utils.index import create_meeting_index, get_global_index, get_patient_index
 
 chat_docs = APIRouter()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class QuestionRequest(BaseModel):
     patient_name: str
     prompt: str
 
+
 class GlobalQuestionRequest(BaseModel):
     prompt: str
+
 
 class MeetingQuestionRequest(BaseModel):
     patient_name: str
     meeting_name: str
     prompt: str
+
 
 def get_query_engine(index):
     retriever = index.as_retriever(similarity_top_k=10)
@@ -39,11 +43,13 @@ def get_query_engine(index):
         ],
     )
 
+
 async def stream_response(request: Request, response):
     return VercelStreamResponse(
         request=request,
         response=response,
     )
+
 
 @chat_docs.post("/ask_patient", tags=["Chat with Patient Data"])
 async def chat_with_patient(request: Request, question: QuestionRequest):
@@ -53,13 +59,20 @@ async def chat_with_patient(request: Request, question: QuestionRequest):
         response = await asyncio.to_thread(query_engine.query, question.prompt)
         return await stream_response(request, response)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(
+            status_code=404, detail=str(e)
+        ) from e  # Explicitly re-raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"An error occurred: {str(e)}"
+        ) from e  # Explicitly re-raise
+
 
 @chat_docs.post("/ask_global", tags=["Chat with All Patient Data"])
 async def chat_with_all_patient_data(request: Request, question: GlobalQuestionRequest):
-    logger.info(f"Received global question: {question.prompt}")
+    logger.info(
+        "Received global question: %s", question.prompt
+    )  # Use lazy % formatting
     try:
         index = await asyncio.to_thread(get_global_index)
         logger.info("Global index retrieved successfully")
@@ -69,8 +82,13 @@ async def chat_with_all_patient_data(request: Request, question: GlobalQuestionR
         logger.info("Query executed successfully")
         return await stream_response(request, response)
     except Exception as e:
-        logger.error(f"Error in chat_with_all_patient_data: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+        logger.error(
+            "Error in chat_with_all_patient_data: %s", str(e)
+        )  # Use lazy % formatting
+        raise HTTPException(
+            status_code=500, detail=f"An error occurred: {str(e)}"
+        ) from e  # Explicitly re-raise
+
 
 @chat_docs.post("/ask_meeting", tags=["Chat with Meeting Data"])
 async def chat_with_meeting(request: Request, question: MeetingQuestionRequest):
@@ -80,9 +98,10 @@ async def chat_with_meeting(request: Request, question: MeetingQuestionRequest):
         response = await asyncio.to_thread(query_engine.query, question.prompt)
         return await stream_response(request, response)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(
+            status_code=404, detail=str(e)
+        ) from e  # Explicitly re-raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
-
-
+        raise HTTPException(
+            status_code=500, detail=f"An error occurred: {str(e)}"
+        ) from e  # Explicitly re-raise
